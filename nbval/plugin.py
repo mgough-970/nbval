@@ -236,7 +236,26 @@ class IPyNbFile(pytest.File):
 
     # Built-in sanitize patterns for commonly varying output.
     # Each tuple is (regex, replacement).
+    # Order matters: more specific patterns should come before more general ones.
     DEFAULT_SANITIZE_PATTERNS = [
+        # ---- Line-level filters (remove entire lines that vary between runs) ----
+        # CRDS Fetching lines (vary based on cache state)
+        (r'^.*CRDS - INFO -\s+Fetching\s+.*$', ''),
+        # astroquery download/cache messages
+        (r'^.*Downloading URL .*\.\.\. \[Done\].*$', ''),
+        (r'^.*Found cached file .+\[astroquery\.\w+\].*$', ''),
+
+        # ---- Execution time / performance values ----
+        # "The execution time in seconds: 0.560002"
+        (r'((?:execution |elapsed |total |wall )?\btime\b.*?:)\s*\d+\.\d+', r'\1 TIMING_VALUE'),
+        # "Ramp Fitting C Time: 0.05272..." or similar
+        (r'(\b\w+ Time:)\s*\d+\.\d+', r'\1 TIMING_VALUE'),
+        # "Total elapsed time = 1.23s"
+        (r'(Total elapsed time\s*=)\s*\S+', r'\1 TIMING_VALUE'),
+        # Bare floating point numbers that look like timing (e.g. "in seconds: 0.123")
+        (r'(in seconds:)\s*\d+\.\d+', r'\1 TIMING_VALUE'),
+
+        # ---- Timestamps and dates ----
         # ISO timestamps with optional fractional seconds and timezone
         # e.g. 2024-03-15 14:30:45,123 or 2024-03-15T14:30:45.123Z
         (r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}([.,]\d+)?\s*([A-Z]{2,4}|[+-]\d{2}:?\d{2})?', 'TIMESTAMP'),
@@ -248,19 +267,26 @@ class IPyNbFile(pytest.File):
         (r'\d{2}:\d{2}:\d{2}([.,]\d+)?', 'TIME'),
         # Short time (HH:MM)
         (r'\d{2}:\d{2}', 'TIME'),
-        # Memory addresses (0x7f1234abcdef)
+
+        # ---- Memory addresses ----
         (r'0x[0-9a-fA-F]+', 'MEMORY_ADDRESS'),
         # Python object repr addresses (<SomeClass at 0x...>)
         (r'(<[a-zA-Z_][0-9a-zA-Z_.]* at )0x[0-9a-fA-F]+(>)', r'\1MEMORY_ADDRESS\2'),
-        # UUIDs (8-4-4-4-12 hex format)
+
+        # ---- UUIDs ----
         (r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', 'UUID'),
-        # Duration strings like "3.45s", "12.3 seconds", "0:05:23"
+
+        # ---- Durations ----
         (r'\b\d+:\d{2}:\d{2}(\.\d+)?\b', 'DURATION'),
         (r'\b\d+(\.\d+)?\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|ms|milliseconds?)\b', 'DURATION'),
         # Runtime/elapsed time patterns common in scientific software
         (r'Runtime\s+(so far|for [^:]+):\s*\d+(\.\d+)?\s*\w+', r'Runtime \1: DURATION'),
+
+        # ---- File paths ----
         # Absolute file paths (Unix-style)
         (r'(?<![a-zA-Z0-9])/(?:[\w.-]+/)+[\w.-]+', 'FILE_PATH'),
+
+        # ---- Misc varying output ----
         # Matplotlib figure size
         (r'(Figure size )\d+x\d+( with \d+ Axes)', r'\1WIDTHxHEIGHT\2'),
         # Table IDs (common in astropy/FITS)
@@ -878,7 +904,11 @@ class IPyNbCell(pytest.Item):
         are not processed
         """
         for regex, replace in self.parent.sanitize_patterns.items():
-            s = re.sub(regex, replace, s)
+            s = re.sub(regex, replace, s, flags=re.MULTILINE)
+
+        # Collapse runs of blank lines left by line-level removals
+        s = re.sub(r'\n[ \t]*\n', '\n', s)
+        s = s.strip('\n')
         return s
 
 
