@@ -80,6 +80,13 @@ def pytest_addoption(parser):
                          'the outputs. This option only works when '
                          'the --nbval flag is passed to py.test')
 
+    group.addoption('--nbval-default-sanitize', action='store_true',
+                    default=False,
+                    help='Enable built-in sanitize patterns for commonly '
+                         'varying output (timestamps, dates, memory addresses, '
+                         'UUIDs, file paths, durations, etc.). These patterns '
+                         'are applied before any user-supplied sanitize file.')
+
     group.addoption('--nbval-current-env', action='store_true',
                     help='Force test execution to use a python kernel in '
                          'the same environment that py.test was '
@@ -226,6 +233,45 @@ class IPyNbFile(pytest.File):
     in the notebook for testing.
     yields pytest items that are required by pytest.
     """
+
+    # Built-in sanitize patterns for commonly varying output.
+    # Each tuple is (regex, replacement).
+    DEFAULT_SANITIZE_PATTERNS = [
+        # ISO timestamps with optional fractional seconds and timezone
+        # e.g. 2024-03-15 14:30:45,123 or 2024-03-15T14:30:45.123Z
+        (r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}([.,]\d+)?\s*([A-Z]{2,4}|[+-]\d{2}:?\d{2})?', 'TIMESTAMP'),
+        # Date only (YYYY-MM-DD)
+        (r'\d{4}-\d{2}-\d{2}', 'DATE'),
+        # Date in DD-MM-YYYY or MM-DD-YYYY format
+        (r'\d{2}-\d{2}-\d{4}', 'DATE'),
+        # Time only (HH:MM:SS with optional fractional seconds)
+        (r'\d{2}:\d{2}:\d{2}([.,]\d+)?', 'TIME'),
+        # Short time (HH:MM)
+        (r'\d{2}:\d{2}', 'TIME'),
+        # Memory addresses (0x7f1234abcdef)
+        (r'0x[0-9a-fA-F]+', 'MEMORY_ADDRESS'),
+        # Python object repr addresses (<SomeClass at 0x...>)
+        (r'(<[a-zA-Z_][0-9a-zA-Z_.]* at )0x[0-9a-fA-F]+(>)', r'\1MEMORY_ADDRESS\2'),
+        # UUIDs (8-4-4-4-12 hex format)
+        (r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', 'UUID'),
+        # Duration strings like "3.45s", "12.3 seconds", "0:05:23"
+        (r'\b\d+:\d{2}:\d{2}(\.\d+)?\b', 'DURATION'),
+        (r'\b\d+(\.\d+)?\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|ms|milliseconds?)\b', 'DURATION'),
+        # Runtime/elapsed time patterns common in scientific software
+        (r'Runtime\s+(so far|for [^:]+):\s*\d+(\.\d+)?\s*\w+', r'Runtime \1: DURATION'),
+        # Absolute file paths (Unix-style)
+        (r'(?<![a-zA-Z0-9])/(?:[\w.-]+/)+[\w.-]+', 'FILE_PATH'),
+        # Matplotlib figure size
+        (r'(Figure size )\d+x\d+( with \d+ Axes)', r'\1WIDTHxHEIGHT\2'),
+        # Table IDs (common in astropy/FITS)
+        (r'\btable\d+\b', 'TABLE_ID'),
+        # Progress bar artifacts (tqdm-style)
+        (r'\d+%\|[█▓▒░\s#=\->|]*\|', 'PROGRESS_BAR'),
+        # Download/transfer speeds and sizes
+        (r'\b\d+(\.\d+)?\s*(B|KB|MB|GB|TB|kB|bytes)/s\b', 'TRANSFER_SPEED'),
+        (r'\b\d+(\.\d+)?\s*(B|KB|MB|GB|TB|kB|bytes)\b', 'FILE_SIZE'),
+    ]
+
     def __init__(self, *args, **kwargs):
         super(IPyNbFile, self).__init__(*args, **kwargs)
         config = self.parent.config
@@ -276,6 +322,10 @@ class IPyNbFile(pytest.File):
         For each of the sanitize files that were specified as command line options
         load the contents of the file into the sanitise patterns dictionary.
         """
+        if self.parent.config.option.nbval_default_sanitize:
+            for regex, replace in self.DEFAULT_SANITIZE_PATTERNS:
+                self.sanitize_patterns[regex] = replace
+
         for fname in self.get_sanitize_files():
             with open(fname, 'r', encoding="utf-8") as f:
                 self.sanitize_patterns.update(get_sanitize_patterns(f.read()))
