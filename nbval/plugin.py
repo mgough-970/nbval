@@ -257,16 +257,18 @@ class IPyNbFile(pytest.File):
         # Bare floating point numbers that look like timing (e.g. "in seconds: 0.123")
         (r'(in seconds:)\s*\d+\.\d+', r'\1 TIMING_VALUE'),
 
-        # ---- Durations (must come before time patterns to avoid partial matches) ----
-        (r'\b\d+:\d{2}:\d{2}(\.\d+)?\b', 'DURATION'),
+        # ---- Timestamps and dates (most specific patterns first) ----
+        # ISO timestamps with optional fractional seconds and timezone
+        # e.g. 2024-03-15 14:30:45,123 or 2024-03-15T14:30:45.123Z
+        (r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}([.,]\d+)?\s*([A-Z]{2,4}|[+-]\d{2}:?\d{2})?', 'TIMESTAMP'),
+
+        # ---- Durations (must come before generic time patterns) ----
+        (r'\b\d+:\d{2}:\d{2}([.,]\d+)?\b', 'DURATION'),
         (r'\b\d+(\.\d+)?\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|ms|milliseconds?)\b', 'DURATION'),
         # Runtime/elapsed time patterns common in scientific software
         (r'Runtime\s+(so far|for [^:]+):\s*\d+(\.\d+)?\s*\w+', r'Runtime \1: DURATION'),
 
-        # ---- Timestamps and dates ----
-        # ISO timestamps with optional fractional seconds and timezone
-        # e.g. 2024-03-15 14:30:45,123 or 2024-03-15T14:30:45.123Z
-        (r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}([.,]\d+)?\s*([A-Z]{2,4}|[+-]\d{2}:?\d{2})?', 'TIMESTAMP'),
+        # ---- Dates and times ----
         # Date only (YYYY-MM-DD)
         (r'\d{4}-\d{2}-\d{2}', 'DATE'),
         # Date in DD-MM-YYYY or MM-DD-YYYY format
