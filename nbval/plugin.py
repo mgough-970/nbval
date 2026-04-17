@@ -615,9 +615,28 @@ class IPyNbCell(pytest.Item):
             config=self.config, op='==', left=left, right=right)
         for new_expl in hook_result:
             if new_expl:
-                new_expl = ['  %s' % line.replace("\n", "\\n") for line in new_expl]
+                # Only keep lines that show actual differences (starting with + or -)
+                # plus a few context lines, to avoid 30k-line diffs
+                diff_lines = []
+                context_budget = 0
+                for line in new_expl:
+                    stripped = line.lstrip()
+                    if stripped.startswith(('+ ', '- ', '+\n', '-\n')):
+                        diff_lines.append('  %s' % line.replace("\n", "\\n"))
+                        context_budget = 3  # show up to 3 lines after each diff
+                    elif stripped.startswith(('== ', "'")) or not stripped.startswith(' '):
+                        # Header lines — always include
+                        diff_lines.append('  %s' % line.replace("\n", "\\n"))
+                    elif context_budget > 0:
+                        diff_lines.append('  %s' % line.replace("\n", "\\n"))
+                        context_budget -= 1
+
+                if len(diff_lines) > 200:
+                    diff_lines = diff_lines[:200]
+                    diff_lines.append('  ... (diff truncated, %d total lines)' % len(new_expl))
+
                 self.comparison_traceback.append("\n assert reference_output == test_output failed:\n")
-                self.comparison_traceback.extend(new_expl)
+                self.comparison_traceback.extend(diff_lines)
                 break
         else:
             # Fallback repr:
@@ -907,7 +926,7 @@ class IPyNbCell(pytest.Item):
             s = re.sub(regex, replace, s, flags=re.MULTILINE)
 
         # Collapse runs of blank lines left by line-level removals
-        s = re.sub(r'\n[ \t]*\n', '\n', s)
+        s = re.sub(r'(\n[ \t]*){2,}\n', '\n', s)
         s = s.strip('\n')
         return s
 
