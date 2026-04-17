@@ -517,6 +517,11 @@ class IPyNbCell(pytest.Item):
         reference_outs = defaultdict(list)
 
         for reference in ref:
+            # Skip outputs that are purely widget-related — widgets don't
+            # render in headless environments, so their text/plain fallback
+            # and other MIME types won't be produced by nbval's kernel.
+            if 'data' in reference and 'application/vnd.jupyter.widget-view+json' in reference.get('data', {}):
+                continue
             for key in reference.keys():
                 # We discard the keys from the skip_compare list:
                 if key not in skip_compare:
@@ -536,6 +541,9 @@ class IPyNbCell(pytest.Item):
 
         # the same for the testing outputs (the cells that are being executed)
         for testing in test:
+            # Skip widget outputs (same as reference above)
+            if 'data' in testing and 'application/vnd.jupyter.widget-view+json' in testing.get('data', {}):
+                continue
             for key in testing.keys():
                 if key not in skip_compare:
                     if key == 'data':
