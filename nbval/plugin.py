@@ -244,6 +244,8 @@ class IPyNbFile(pytest.File):
         # astroquery download/cache messages
         (r'^.*Downloading URL .*\.\.\. \[Done\].*$', ''),
         (r'^.*Found cached file .+\[astroquery\.\w+\].*$', ''),
+        # Download vs cached status messages (ALREADY DOWNLOADED vs DOWNLOAD SUCCESSFUL etc.)
+        (r'\b(ALREADY DOWNLOADED|DOWNLOAD SUCCESSFUL|DOWNLOADED)\b', 'DOWNLOAD_STATUS'),
 
         # ---- Execution time / performance values ----
         # "The execution time in seconds: 0.560002"
@@ -926,7 +928,7 @@ class IPyNbCell(pytest.Item):
             s = re.sub(regex, replace, s, flags=re.MULTILINE)
 
         # Collapse runs of blank lines left by line-level removals
-        s = re.sub(r'(\n[ \t]*){2,}\n', '\n', s)
+        s = re.sub(r'\n([ \t]*\n)+', '\n', s)
         s = s.strip('\n')
         return s
 
