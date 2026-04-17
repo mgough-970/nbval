@@ -244,8 +244,14 @@ class IPyNbFile(pytest.File):
         # astroquery download/cache messages
         (r'^.*Downloading URL .*\.\.\. \[Done\].*$', ''),
         (r'^.*Found cached file .+\[astroquery\.\w+\].*$', ''),
-        # Download vs cached status messages (ALREADY DOWNLOADED vs DOWNLOAD SUCCESSFUL etc.)
-        (r'\b(ALREADY DOWNLOADED|DOWNLOAD SUCCESSFUL|DOWNLOADED)\b', 'DOWNLOAD_STATUS'),
+        # Download/cache status lines (entire lines that differ based on cache state)
+        (r'^.*(?:ALREADY DOWNLOADED|DOWNLOAD SUCCESSFUL|DOWNLOADED|Downloading):\s*\S+.*$', ''),
+        # MAST download progress/status lines
+        (r'^.*(?:Downloading|Downloaded|Caching|Using cached).*\.fits.*$', ''),
+        # Pipeline processing progress lines (file list varies when outputs already exist)
+        (r'^.*Applying Stage \d+ Corrections & Calibrations to:.*$', ''),
+        (r'^.*Stage \d+ has been completed for .+ data!.*$', ''),
+        (r'^.*Skipping .+ processing.*$', ''),
 
         # ---- Execution time / performance values ----
         # "The execution time in seconds: 0.560002"
@@ -719,14 +725,11 @@ class IPyNbCell(pytest.Item):
         # TODO: Only store if comparing with nbdime, to save on memory usage
         self.test_outputs = outs
 
-        # Once the shell reply is received, the cell has finished executing.
-        # Use a shorter timeout for collecting remaining iopub messages,
-        # since they should arrive quickly after execution completes.
-        # This prevents hanging on widget comms in headless environments.
-        if not timed_out_this_run:
-            iopub_timeout = min(self.output_timeout, 30)
-        else:
-            iopub_timeout = self.output_timeout
+        # Track whether shell reply was received successfully.
+        # If so, the cell finished executing — any iopub timeout means we
+        # just missed the idle message (e.g. widget comms in headless envs),
+        # not that the cell failed.
+        shell_reply_received = not timed_out_this_run
 
         # Now get the outputs from the iopub channel
         while True:
@@ -735,32 +738,24 @@ class IPyNbCell(pytest.Item):
             # code execution.
             try:
                 # Get a message from the kernel iopub channel
-                msg = self.parent.get_kernel_message(timeout=iopub_timeout)
+                msg = self.parent.get_kernel_message(timeout=self.output_timeout)
 
             except Empty:
-                if not timed_out_this_run:
-                    # Shell reply was received, so execution completed.
-                    # The iopub idle message just didn't arrive in time
-                    # (common with widgets in headless environments).
+                if shell_reply_received:
+                    # Cell execution completed (shell reply received).
+                    # The iopub idle message didn't arrive in time — this
+                    # happens with widgets in headless environments.
                     # Break out gracefully — we have all the real outputs.
                     break
-                # This is not working: ! The code will not be checked
-                # if the time is out (when the cell stops to be executed?)
+                # Cell execution timed out on shell channel.
                 # Halt kernel here!
                 kernel.stop()
-                if timed_out_this_run:
-                    self.raise_cell_error(
-                        "Timeout of %g seconds exceeded while executing cell."
-                        " Failed to interrupt kernel in %d seconds, so "
-                        "failing without traceback." %
-                            (timeout, self.output_timeout),
-                    )
-                else:
-                    self.parent.timed_out = True
-                    self.raise_cell_error(
-                        "Timeout of %d seconds exceeded waiting for output." %
-                            self.output_timeout,
-                    )
+                self.raise_cell_error(
+                    "Timeout of %g seconds exceeded while executing cell."
+                    " Failed to interrupt kernel in %d seconds, so "
+                    "failing without traceback." %
+                        (timeout, self.output_timeout),
+                )
 
 
 
