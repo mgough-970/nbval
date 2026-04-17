@@ -257,6 +257,12 @@ class IPyNbFile(pytest.File):
         # Bare floating point numbers that look like timing (e.g. "in seconds: 0.123")
         (r'(in seconds:)\s*\d+\.\d+', r'\1 TIMING_VALUE'),
 
+        # ---- Durations (must come before time patterns to avoid partial matches) ----
+        (r'\b\d+:\d{2}:\d{2}(\.\d+)?\b', 'DURATION'),
+        (r'\b\d+(\.\d+)?\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|ms|milliseconds?)\b', 'DURATION'),
+        # Runtime/elapsed time patterns common in scientific software
+        (r'Runtime\s+(so far|for [^:]+):\s*\d+(\.\d+)?\s*\w+', r'Runtime \1: DURATION'),
+
         # ---- Timestamps and dates ----
         # ISO timestamps with optional fractional seconds and timezone
         # e.g. 2024-03-15 14:30:45,123 or 2024-03-15T14:30:45.123Z
@@ -277,12 +283,6 @@ class IPyNbFile(pytest.File):
 
         # ---- UUIDs ----
         (r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', 'UUID'),
-
-        # ---- Durations ----
-        (r'\b\d+:\d{2}:\d{2}(\.\d+)?\b', 'DURATION'),
-        (r'\b\d+(\.\d+)?\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|ms|milliseconds?)\b', 'DURATION'),
-        # Runtime/elapsed time patterns common in scientific software
-        (r'Runtime\s+(so far|for [^:]+):\s*\d+(\.\d+)?\s*\w+', r'Runtime \1: DURATION'),
 
         # ---- File paths ----
         # Absolute file paths (Unix-style)
