@@ -450,7 +450,7 @@ class IPyNbCell(pytest.Item):
         self.test_outputs = None
         self.options = options
         self.config = parent.parent.config
-        self.output_timeout = 120
+        self.output_timeout = int(self.config.option.nbval_cell_timeout)
         # Disable colors if we have been explicitly asked to
         self.colors = bcolors if self.config.option.color != 'no' else nocolors
         # _pytest.skipping assumes all pytest.Item have this attribute:
