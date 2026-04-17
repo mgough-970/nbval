@@ -719,6 +719,15 @@ class IPyNbCell(pytest.Item):
         # TODO: Only store if comparing with nbdime, to save on memory usage
         self.test_outputs = outs
 
+        # Once the shell reply is received, the cell has finished executing.
+        # Use a shorter timeout for collecting remaining iopub messages,
+        # since they should arrive quickly after execution completes.
+        # This prevents hanging on widget comms in headless environments.
+        if not timed_out_this_run:
+            iopub_timeout = min(self.output_timeout, 30)
+        else:
+            iopub_timeout = self.output_timeout
+
         # Now get the outputs from the iopub channel
         while True:
             # The iopub channel broadcasts a range of messages. We keep reading
@@ -726,9 +735,15 @@ class IPyNbCell(pytest.Item):
             # code execution.
             try:
                 # Get a message from the kernel iopub channel
-                msg = self.parent.get_kernel_message(timeout=self.output_timeout)
+                msg = self.parent.get_kernel_message(timeout=iopub_timeout)
 
             except Empty:
+                if not timed_out_this_run:
+                    # Shell reply was received, so execution completed.
+                    # The iopub idle message just didn't arrive in time
+                    # (common with widgets in headless environments).
+                    # Break out gracefully — we have all the real outputs.
+                    break
                 # This is not working: ! The code will not be checked
                 # if the time is out (when the cell stops to be executed?)
                 # Halt kernel here!
