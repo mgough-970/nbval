@@ -292,6 +292,9 @@ class IPyNbFile(pytest.File):
         # ---- UUIDs ----
         (r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', 'UUID'),
 
+        # ---- Hashes/checksums (hex strings 32+ chars, e.g. SHA-256, MD5) ----
+        (r'\b[0-9a-fA-F]{32,}\b', 'HASH'),
+
         # ---- File paths ----
         # Absolute file paths (Unix-style)
         (r'(?<![a-zA-Z0-9])/(?:[\w.-]+/)+[\w.-]+', 'FILE_PATH'),
