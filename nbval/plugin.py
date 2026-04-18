@@ -573,21 +573,33 @@ class IPyNbCell(pytest.Item):
                 for r in ref
             ):
                 return True
-            self.comparison_traceback.append(
-                cc.FAIL
-                + "Missing output fields from running code: %s"
-                % (ref_keys - test_keys)
-                + cc.ENDC
-            )
-            return False
-        elif test_keys - ref_keys:
-            self.comparison_traceback.append(
-                cc.FAIL
-                + "Unexpected output fields from running code: %s"
-                % (test_keys - ref_keys)
-                + cc.ENDC
-            )
-            return False
+            # When default sanitize is enabled, tolerate missing stderr
+            # (warnings are non-deterministic — they may appear on first
+            # import but not on re-runs)
+            missing = ref_keys - test_keys
+            if self.parent.config.option.nbval_default_sanitize:
+                missing = missing - {'stderr'}
+            if missing:
+                self.comparison_traceback.append(
+                    cc.FAIL
+                    + "Missing output fields from running code: %s"
+                    % (ref_keys - test_keys)
+                    + cc.ENDC
+                )
+                return False
+        if test_keys - ref_keys:
+            # When default sanitize is enabled, tolerate extra stderr
+            extra = test_keys - ref_keys
+            if self.parent.config.option.nbval_default_sanitize:
+                extra = extra - {'stderr'}
+            if extra:
+                self.comparison_traceback.append(
+                    cc.FAIL
+                    + "Unexpected output fields from running code: %s"
+                    % (test_keys - ref_keys)
+                    + cc.ENDC
+                )
+                return False
 
         # If we've got to here, the two dicts must have the same set of keys
 
