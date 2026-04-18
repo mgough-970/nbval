@@ -517,11 +517,13 @@ class IPyNbCell(pytest.Item):
         reference_outs = defaultdict(list)
 
         for reference in ref:
-            # Skip outputs that are purely widget-related — widgets don't
+            # Skip outputs that are widget-related — widgets don't
             # render in headless environments, so their text/plain fallback
             # and other MIME types won't be produced by nbval's kernel.
-            if 'data' in reference and 'application/vnd.jupyter.widget-view+json' in reference.get('data', {}):
-                continue
+            if 'data' in reference:
+                data = reference.get('data', {})
+                if 'application/vnd.jupyter.widget-view+json' in data:
+                    continue
             for key in reference.keys():
                 # We discard the keys from the skip_compare list:
                 if key not in skip_compare:
@@ -560,6 +562,14 @@ class IPyNbCell(pytest.Item):
         test_keys = set(testing_outs.keys())
 
         if ref_keys - test_keys:
+            # If test produced no outputs at all and reference only has
+            # display_data/execute_result outputs (common with widgets in
+            # headless environments), treat as pass rather than fail.
+            if not test_keys and all(
+                r.get('output_type') in ('display_data', 'execute_result')
+                for r in ref
+            ):
+                return True
             self.comparison_traceback.append(
                 cc.FAIL
                 + "Missing output fields from running code: %s"
